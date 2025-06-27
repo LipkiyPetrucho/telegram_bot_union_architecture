@@ -1,59 +1,24 @@
-import inspect
+from __future__ import annotations
 
-import peewee
-import peewee_async
-import playhouse.migrate
-from loguru import logger
+import asyncio
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from tg_bot_template.config import BotSettings
-from tg_bot_template.db_infra import models
-
-ALL_TABLES = [data for _, data in inspect.getmembers(models) if isinstance(data, peewee.ModelBase)]
+from tg_bot_template.db_infra.models import metadata
 
 
-def _dev_drop_tables(database: peewee_async.PooledPostgresqlDatabase, tables: list[peewee.ModelBase]) -> None:
-    with database:
-        database.drop_tables(tables, safe=True)
-    logger.info("Tables dropped")
-
-
-def _create_tables(database: peewee_async.PooledPostgresqlDatabase, tables: list[peewee.ModelBase]) -> None:
-    with database:
-        database.create_tables(tables, safe=True)
-    logger.info("Tables created")
-
-
-def _make_migrations(database: peewee_async.PooledPostgresqlDatabase) -> None:
-    migrator = playhouse.migrate.PostgresqlMigrator(database)  # noqa: F841
-    try:
-        with database.atomic():
-            playhouse.migrate.migrate(
-                # migrator.add_column("users", "social_id", peewee.BigIntegerField(null=True)),  # noqa: ERA001
-                # migrator.drop_not_null("users", "name"),  # noqa: ERA001
-                # migrator.alter_column_type("users", "social_id", peewee.BigIntegerField(null=False)),  # noqa: ERA001
-            )
-        logger.info("Tables migrated")
-    except peewee.ProgrammingError as e:
-        logger.exception(f"Tables migrating error: {str(e)}")
-
-
-def setup_db(settings: BotSettings) -> peewee_async.Manager:
-    # psql postgresql://tg_bot_user:tg_bot_user@localhost:5432/tg_bot_user
-    # ---------------- DB INIT ----------------
-    database = peewee_async.PooledPostgresqlDatabase(
-        settings.postgres_db,
-        user=settings.postgres_user,
-        password=settings.postgres_password,
-        host=settings.postgres_host,
+def setup_db(settings: BotSettings) -> async_sessionmaker[AsyncSession]:
+    url = (
+        f"postgresql+asyncpg://{settings.postgres_user}:{settings.postgres_password}"
+        f"@{settings.postgres_host}/{settings.postgres_db}"
     )
-    database.bind(ALL_TABLES)
+    engine = create_async_engine(url, echo=False)
+    async_session = async_sessionmaker(engine, expire_on_commit=False)
 
-    # ---------------- MIGRATIONS ----------------
-    # _dev_drop_tables(database, ALL_TABLES)  # noqa: ERA001
-    _create_tables(database, ALL_TABLES)
-    _make_migrations(database)
+    async def init_models() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(metadata.create_all)
 
-    database.close()
-    database.set_allow_sync(False)
-
-    return peewee_async.Manager(database)
+    asyncio.run(init_models())
+    return async_session
