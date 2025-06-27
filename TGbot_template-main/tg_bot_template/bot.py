@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Type
+from typing import Any
 
 import aioschedule
 from aiogram import types
@@ -7,7 +7,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import StatesGroup
 from aiogram.utils import executor
-from aiogram.utils.exceptions import RetryAfter, BotBlocked
+from aiogram.utils.exceptions import BotBlocked
 from loguru import logger
 
 from . import dp
@@ -20,7 +20,7 @@ from .bot_lib.aiogram_overloads import DbDispatcher
 from .bot_lib.bot_feature import Feature, InlineButton, TgUser
 from .bot_lib.utils import bot_edit_callback_message, bot_safe_send_message, bot_safe_send_photo
 from .config import settings
-from .db_infra import db, setup_db
+from .db_infra import db
 
 # filters binding
 dp.filters_factory.bind(CreatorFilter)
@@ -90,7 +90,7 @@ async def add_form_info(msg: types.Message, state: FSMContext) -> None:
     await fill_form(msg=msg, feature=features.set_user_about, form=UserForm, state=state)
 
 
-async def fill_form(*, msg: types.Message, feature: Feature, form: Type[StatesGroup], state: FSMContext) -> None:
+async def fill_form(*, msg: types.Message, feature: Feature, form: type[StatesGroup], state: FSMContext) -> None:
     async with state.proxy() as data:
         data[feature.data_key] = msg.caption or msg.text
     await form.next()
@@ -246,5 +246,4 @@ async def on_shutdown(dispatcher: DbDispatcher) -> None:
 
 
 if __name__ == "__main__":
-    dp.set_db_conn(conn=setup_db(settings))
     executor.start_polling(dp, on_startup=on_startup, on_shutdown=on_shutdown)
