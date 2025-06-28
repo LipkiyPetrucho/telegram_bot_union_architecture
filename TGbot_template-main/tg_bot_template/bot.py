@@ -3,11 +3,10 @@ from typing import Any
 
 import aioschedule
 from aiogram import types
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Text
-from aiogram.dispatcher.filters.state import StatesGroup
-from aiogram.utils import executor
-from aiogram.utils.exceptions import BotBlocked
+from aiogram.exceptions import BotBlocked
+from aiogram.filters import StateFilter, Text
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup
 from loguru import logger
 
 from . import dp
@@ -22,24 +21,19 @@ from .bot_lib.utils import bot_edit_callback_message, bot_safe_send_message, bot
 from .config import settings
 from .db_infra import db
 
-# filters binding
-dp.filters_factory.bind(CreatorFilter)
-dp.filters_factory.bind(RegistrationFilter)
-dp.filters_factory.bind(NonRegistrationFilter)
-
 
 # -------------------------------------------- BASE HANDLERS ----------------------------------------------------------
-@dp.message_handler(lambda message: features.ping_ftr.find_triggers(message))
+@dp.message(lambda message: features.ping_ftr.find_triggers(message))
 async def ping(msg: types.Message) -> None:
     await bot_safe_send_message(dp, msg.from_user.id, features.ping_ftr.text)  # type: ignore[arg-type]
 
 
-@dp.message_handler(lambda message: features.creator_ftr.find_triggers(message), creator=True)
+@dp.message(lambda message: features.creator_ftr.find_triggers(message), CreatorFilter(creator=True))
 async def creator_filter_check(msg: types.Message) -> None:
     await msg.answer(features.creator_ftr.text, parse_mode=types.ParseMode.MARKDOWN)
 
 
-@dp.message_handler(Text(equals=features.cancel_ftr.triggers, ignore_case=True), state="*")
+@dp.message(Text(equals=features.cancel_ftr.triggers, ignore_case=True), StateFilter(None))
 async def cancel_command(msg: types.Message, state: FSMContext) -> None:
     await msg.answer(features.cancel_ftr.text)
     if await state.get_state() is not None:
@@ -47,7 +41,7 @@ async def cancel_command(msg: types.Message, state: FSMContext) -> None:
     await main_menu(from_user_id=msg.from_user.id)
 
 
-@dp.callback_query_handler(Text(equals=features.cancel_ftr.triggers, ignore_case=True), state="*")
+@dp.callback_query(Text(equals=features.cancel_ftr.triggers, ignore_case=True), StateFilter(None))
 async def cancel_callback(callback: types.CallbackQuery, state: FSMContext) -> None:
     await bot_edit_callback_message(dp, callback, features.cancel_ftr.text)
     if await state.get_state() is not None:
@@ -55,15 +49,15 @@ async def cancel_callback(callback: types.CallbackQuery, state: FSMContext) -> N
     await main_menu(from_user_id=callback.from_user.id)
 
 
-@dp.callback_query_handler(game_cb.filter(action=features.start_ftr.callback_action), registered=True)
-@dp.message_handler(Text(equals=features.start_ftr.triggers, ignore_case=True), registered=True)
+@dp.callback_query(game_cb.filter(action=features.start_ftr.callback_action), RegistrationFilter(registered=True))
+@dp.message(Text(equals=features.start_ftr.triggers, ignore_case=True), RegistrationFilter(registered=True))
 async def start(msg: types.Message | types.CallbackQuery) -> None:
     await main_menu(from_user_id=msg.from_user.id)
     if isinstance(msg, types.CallbackQuery):
         await msg.answer()
 
 
-@dp.message_handler(Text(equals=features.help_ftr.triggers, ignore_case=True), registered=True)
+@dp.message(Text(equals=features.help_ftr.triggers, ignore_case=True), RegistrationFilter(registered=True))
 async def help_feature(msg: types.Message) -> None:
     await msg.answer(features.help_ftr.text, reply_markup=features.empty.kb)
 
@@ -74,18 +68,18 @@ async def main_menu(*, from_user_id: int) -> None:
 
 
 # -------------------------------------------- PROFILE HANDLERS -------------------------------------------------------
-@dp.message_handler(Text(equals=features.set_user_info.triggers, ignore_case=True), registered=True)
+@dp.message(Text(equals=features.set_user_info.triggers, ignore_case=True), RegistrationFilter(registered=True))
 async def set_name(msg: types.Message) -> None:
     await msg.answer(features.set_user_info.text, reply_markup=features.cancel_ftr.kb)
     await UserForm.name.set()
 
 
-@dp.message_handler(content_types=["text", "caption"], state=UserForm.name)
+@dp.message(StateFilter(UserForm.name), content_types=["text", "caption"])
 async def add_form_name(msg: types.Message, state: FSMContext) -> None:
     await fill_form(msg=msg, feature=features.set_user_name, form=UserForm, state=state)
 
 
-@dp.message_handler(content_types=["text", "caption"], state=UserForm.info)
+@dp.message(StateFilter(UserForm.info), content_types=["text", "caption"])
 async def add_form_info(msg: types.Message, state: FSMContext) -> None:
     await fill_form(msg=msg, feature=features.set_user_about, form=UserForm, state=state)
 
@@ -97,7 +91,7 @@ async def fill_form(*, msg: types.Message, feature: Feature, form: type[StatesGr
     await msg.answer(feature.text, reply_markup=features.cancel_ftr.kb)
 
 
-@dp.message_handler(content_types=["photo"], state=UserForm.photo)
+@dp.message(StateFilter(UserForm.photo), content_types=["photo"])
 async def add_form_photo(msg: types.Message, state: FSMContext) -> None:
     async with state.proxy() as data:
         user_form_data = UserFormData(
@@ -111,23 +105,23 @@ async def add_form_photo(msg: types.Message, state: FSMContext) -> None:
     await msg.answer(features.set_user_info.text2, reply_markup=features.set_user_info.kb)
 
 
-@dp.message_handler(content_types=["any"], state=UserForm.name)
+@dp.message(StateFilter(UserForm.name), content_types=["any"])
 async def error_form_name(msg: types.Message) -> None:
     await msg.answer(Errors.text_form, reply_markup=features.cancel_ftr.kb)
 
 
-@dp.message_handler(content_types=["any"], state=UserForm.info)
+@dp.message(StateFilter(UserForm.info), content_types=["any"])
 async def error_form_info(msg: types.Message) -> None:
     await msg.answer(Errors.text_form, reply_markup=features.cancel_ftr.kb)
 
 
-@dp.message_handler(content_types=["any"], state=UserForm.photo)
+@dp.message(StateFilter(UserForm.photo), content_types=["any"])
 async def error_form_photo(msg: types.Message) -> None:
     await msg.answer(Errors.photo_form, reply_markup=features.cancel_ftr.kb)
 
 
 # -------------------------------------------- GAME HANDLERS ----------------------------------------------------------
-@dp.message_handler(Text(equals=features.rating_ftr.triggers, ignore_case=True), registered=True)
+@dp.message(Text(equals=features.rating_ftr.triggers, ignore_case=True), RegistrationFilter(registered=True))
 async def rating(msg: types.Message) -> None:
     user = await db.get_user(tg_user=TgUser(tg_id=msg.from_user.id, username=msg.from_user.username))
     all_users = await db.get_all_users()
@@ -142,13 +136,16 @@ async def rating(msg: types.Message) -> None:
         await bot_safe_send_photo(dp, msg.from_user.id, best_user.photo, reply_markup=features.rating_ftr.kb)
 
 
-@dp.message_handler(Text(equals=features.press_button_ftr.triggers, ignore_case=True), registered=True)
+@dp.message(Text(equals=features.press_button_ftr.triggers, ignore_case=True), RegistrationFilter(registered=True))
 async def send_press_button(msg: types.Message) -> None:
     text, keyboard = await update_button_tap(taps=0)
     await msg.answer(text, reply_markup=Feature.create_tg_inline_kb(keyboard))
 
 
-@dp.callback_query_handler(game_cb.filter(action=features.press_button_ftr.callback_action), registered=True)
+@dp.callback_query(
+    game_cb.filter(action=features.press_button_ftr.callback_action),
+    RegistrationFilter(registered=True),
+)
 async def count_button_tap(callback: types.CallbackQuery, callback_data: dict[Any, Any]) -> None:
     current_taps = int(callback_data["taps"])
     new_taps = current_taps + 1
@@ -177,7 +174,7 @@ async def update_button_tap(*, taps: int) -> tuple[str, list[list[InlineButton]]
 
 
 # -------------------------------------------- SERVICE HANDLERS -------------------------------------------------------
-@dp.message_handler(content_types=["any"], not_registered=True)
+@dp.message(NonRegistrationFilter(not_registered=True), content_types=["any"])
 async def registration(msg: types.Message) -> types.Message | None:
     if settings.register_passphrase is not None:
         if msg.text.lower() != settings.register_passphrase:
@@ -191,19 +188,21 @@ async def registration(msg: types.Message) -> types.Message | None:
     return None
 
 
-@dp.message_handler(content_types=["any"], registered=True)
+@dp.message(RegistrationFilter(registered=True), content_types=["any"])
 async def handle_wrong_text_msg(msg: types.Message) -> None:
     await asyncio.sleep(2)
     await msg.reply(Errors.text)
 
 
-@dp.my_chat_member_handler()
+@dp.my_chat_member()
 async def handle_my_chat_member_handlers(msg: types.Message):
     logger.info(msg)  # уведомление о блокировке
 
 
-@dp.errors_handler(exception=BotBlocked)
-async def exception_handler(update: types.Update, exception: BotBlocked):
+@dp.errors()
+async def exception_handler(update: types.Update, exception: Exception):
+    if not isinstance(exception, BotBlocked):
+        return False
     # работает только для хендлеров бота, для шедулера не работает
     logger.info(update.message.from_user.id)  # уведомление о блокировке
     logger.info(exception)  # уведомление о блокировке
@@ -245,5 +244,11 @@ async def on_shutdown(dispatcher: DbDispatcher) -> None:
     await dispatcher.storage.wait_closed()
 
 
+async def main() -> None:
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
+    await dp.start_polling(dp.bot)
+
+
 if __name__ == "__main__":
-    executor.start_polling(dp, on_startup=on_startup, on_shutdown=on_shutdown)
+    asyncio.run(main())
