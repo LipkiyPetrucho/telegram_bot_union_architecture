@@ -1,5 +1,5 @@
 from aiogram import Dispatcher, types
-from aiogram.dispatcher.filters import BoundFilter
+from aiogram.fsm.storage.base import BaseStorage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
@@ -15,7 +15,7 @@ class DbDispatcher(Dispatcher):  # type: ignore[misc]
         return self._db_conn
 
 
-class AbsFilter(BoundFilter):  # type: ignore[misc]
+class AbsFilter:  # type: ignore[misc]
     key = "key"
 
     def __init__(self, **kwargs):  # type: ignore[no-untyped-def]

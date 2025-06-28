@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class Envs(Enum):
@@ -12,17 +12,17 @@ class Envs(Enum):
 class BotSettings(BaseSettings):
     tg_bot_token: str
 
-    postgres_db: str | None
-    postgres_user: str | None
-    postgres_password: str | None
-    postgres_host: str | None
+    postgres_db: str | None = None
+    postgres_user: str | None = None
+    postgres_password: str | None = None
+    postgres_host: str | None = None
 
-    fsm_redis_host: str | None
-    fsm_redis_db: int | None
-    fsm_redis_pass: str | None
+    fsm_redis_host: str | None = None
+    fsm_redis_db: int | None = None
+    fsm_redis_pass: str | None = None
 
-    register_passphrase: str | None
-    creator_id: int | None
+    register_passphrase: str | None = None
+    creator_id: int | None = None
 
     environment: Envs = Envs.local_test
 
